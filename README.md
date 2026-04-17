@@ -107,6 +107,96 @@ The architecture is independent of the underlying LLM. Any OpenAI-compatible end
 
 ---
 
+## Visual interface
+
+`nen` is built with **egui** (pure Rust immediate-mode GUI, no Electron, no web tech). Every panel renders natively in ~10 MB of RAM.
+
+### Layout overview
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  ☰ Menu  │  Model: qwen3.5-9b ▾   Permissions: [R] [R+W] [Full]   ⚙ Settings │
+├──────────────┬───────────────────────────────────────────────┬───────────────┤
+│              │                                               │               │
+│  SycoMeter   │                                               │   Thought     │
+│  ▓▓▓░░ 58%   │            Chat / Conversation                │   Flow        │
+│  flags:      │                                               │   panel       │
+│   - adverbs  │   User prompt                                 │               │
+│   - vague    │   > ...                                       │   🧠 Reasoning│
+│              │                                               │   🔧 Tool call│
+│  ─────────   │   Assistant response                          │   📁 list_dir │
+│              │   > ... (streaming tokens)                    │   📄 read_file│
+│  File tree   │                                               │   ✎ edit_file │
+│  📁 workdir  │   [tool_call] list_dir(".")                   │   ✅ step_done│
+│   ├ src/     │   [result]   [file] main.rs (180 KB)          │               │
+│   ├ README   │                                               │               │
+│   └ ...      │   ─────────────────────                       │   ─────────   │
+│              │   [Textbox: your prompt]         [↑ Send]     │   Predictor   │
+│              │                                               │   next type:  │
+│              │                                               │   tool_call   │
+│              │                                               │   or text     │
+└──────────────┴───────────────────────────────────────────────┴───────────────┘
+```
+
+### Panels in depth
+
+#### 🎚️ SycoMeter — sycophancy detector (left panel)
+Measures how much the LLM response slips into flattery / verbal softening. A pure Rust heuristic scanning for:
+- Empty adverbs ("*absolutely*", "*definitely*", "*certainly*")
+- Vague super-praise ("*great question*", "*excellent point*")
+- Hedging inflation ("*of course*, *indeed*, *clearly*")
+- Reflected user words turned into compliments
+
+Output: a **0–100 % bar** (color gradient: green → yellow → red) plus a list of detected flags. A model running too high regularly means its system prompt is pushing it toward servility — a concrete signal to rework the prompt.
+
+An **EMA (exponential moving average) per model** is also tracked, so switching from Qwen to GLM or Gemma shows which one is most/least sycophantic in your actual usage.
+
+#### 🧠 Thought Flow panel (right panel)
+Renders the model's reasoning in a structured, sequential feed:
+- **Reasoning blocks** — the "thinking" text before/during the answer
+- **Tool calls** — each with name, arguments, result, exit status (✅ / ❌)
+- **Result previews** — first lines of file reads, command output, knowledge matches
+- **Step markers** — in Cycle Agent mode (WIP), visualizes plan → step done / step failed → next
+
+Gives you a **real-time X-ray** of how the model is solving the task, not just the final answer. Useful to spot where a chain started to drift (e.g. wrong WMI class hallucinated, or XML-slip on Nth tool call).
+
+Can be exported per session as standalone HTML artifact (not versioned — kept private to the user).
+
+#### 🔮 Predictor (right panel, bottom)
+A lightweight heuristic that predicts the **next emission type**: plain text answer vs. tool call vs. reasoning block. Helps the user anticipate UI changes and lets the app pre-allocate UI slots for smoother streaming.
+
+#### 📁 File tree (left panel, bottom)
+Live arborescence of the AI workdir, auto-refreshed. Respects the same filter as `list_dir` (no `_thought_flow.*` artifacts displayed). Click a file → quick preview inline.
+
+#### ⚙️ Settings
+Persisted in `settings.json` (gitignored, per-user):
+- `ai_workdir` — the sandboxed directory the LLM is allowed to read/write
+- `temperature`, `top_p`, `frequency_penalty`, `presence_penalty`, `seed`
+- `max_tokens_default`, `reasoning_default`
+- Toggle panels: `show_syco`, `show_predictor`, `show_file_tree`
+- `tools_enabled` — disable all tool calling if pure chat desired
+
+#### 🎛️ Permission selector (top bar)
+Three modes, live-switchable:
+- **R** (read-only) — only `list_dir`, `read_file`
+- **R+W** (restricted) — reads + writes inside workdir, no shell
+- **Full** — all tools including `run_command` (shell execution)
+
+Sandbox jail enforced via `check_access()` — canonicalizes every path and rejects anything outside the workdir tree.
+
+#### 🎨 Design language
+Dark theme by default. Monochrome base with accent colors per concept:
+- 🟡 Akari / reasoning
+- 🔵 Bash / commands
+- 🟢 OK / success
+- 🔴 Error
+- 🟣 Read operations
+- 🩷 Write operations
+
+Font is Inter by default, with full Unicode fallback for Japanese (kanji render natively for the 灯 / 念 branding).
+
+---
+
 ## Roadmap
 
 Openly shared — if this project doesn't reach every goal, it may at least inspire others to pick up the pattern.
@@ -142,6 +232,76 @@ Openly shared — if this project doesn't reach every goal, it may at least insp
 - [ ] Multi-workdir switching without restart
 - [ ] Plugin-style tool loading (user-defined tools without rebuilding)
 - [ ] Optional local speech-to-text input (Whisper) for voice interaction
+
+---
+
+## task_state.db — Cycle Agent working memory (WIP)
+
+The second SQLite DB next to `knowledge.db`. Where `knowledge.db` holds **long-term curated knowledge**, `task_state.db` holds **ephemeral working state** for long-horizon tasks split into atomic steps.
+
+### Schema (3 tables + 2 indexes)
+
+```sql
+CREATE TABLE tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_description TEXT NOT NULL,     -- the original user request
+    status TEXT NOT NULL,                -- 'planning' | 'running' | 'done' | 'failed'
+    created_at TEXT NOT NULL,
+    ended_at TEXT,
+    model TEXT,                          -- which model handled it
+    final_summary TEXT                   -- closing message from task_done()
+);
+
+CREATE TABLE steps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    step_number INTEGER NOT NULL,
+    description TEXT NOT NULL,           -- "read the spec file"
+    status TEXT NOT NULL,                -- 'pending' | 'running' | 'done' | 'failed'
+    findings TEXT,                       -- what the step discovered (compact summary)
+    error TEXT,                          -- if failed, the error message
+    tool_calls_json TEXT,                -- serialized list of tools used in this step
+    started_at TEXT,
+    ended_at TEXT,
+    tokens_used INTEGER
+);
+
+CREATE TABLE cycle_prompts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    cycle_number INTEGER NOT NULL,
+    system_prompt TEXT,                  -- minimal prompt sent for this cycle
+    user_prompt TEXT,                    -- the step description presented as user input
+    response_text TEXT,                  -- raw response
+    ts TEXT NOT NULL
+);
+
+CREATE INDEX idx_steps_task ON steps(task_id);
+CREATE INDEX idx_cycle_prompts_task ON cycle_prompts(task_id);
+```
+
+### Pattern — how the Cycle Agent will use it
+
+1. **Plan** — the LLM receives the task, calls `plan_task(description, steps[])` → insert 1 task + N pending steps.
+2. **Execute step by step** — for each `pending` step:
+   - Load a minimal context: task description + this step's description only (not the previous ones' full transcripts).
+   - Let the LLM call whatever tools it needs within the workdir sandbox.
+   - On completion, it calls `step_done(step_id, findings)` — findings is a **compact summary** (e.g. "spec file reads user/password from `config.toml`"), not the raw file content.
+   - **Context is purged between steps.** The next cycle starts fresh, reading only the task description + ordered previous findings + current step description.
+3. **On failure** — the LLM calls `step_failed(step_id, error)` → the agent can choose to retry, skip, or abort.
+4. **Finalize** — when all steps are done (or an unrecoverable failure), `task_done(task_id, summary)` closes the task.
+
+### Why two DBs side by side
+
+| | knowledge.db | task_state.db |
+|---|---|---|
+| Lifespan | **Durable** — curated knowledge kept over sessions | **Ephemeral** — archived once the task is done |
+| Content | Facts, user preferences, recurring references | In-flight tasks, intermediate findings, raw cycle prompts |
+| Indexing | Vector (embedding + cosine similarity) | Relational (task_id, step_number) |
+| User-facing | Tools: save / search / list / delete | Tools: plan_task / step_done / step_failed / task_done |
+| Grows | Slowly, curated by the model on meaningful findings | Fast, purged/archived when tasks close |
+
+Keeping them separate prevents cheap working-state noise (raw tool outputs, retry errors) from polluting the long-term memory.
 
 ---
 
@@ -206,4 +366,10 @@ This is not a competitor to Claude/GPT/Gemini on edge tasks. It is an **everyday
 
 ## License
 
-TBD
+**Open and freely available.**
+
+Copyright (c) 2026 **Nico (Kerm)** & **灯 Akari**
+
+Released under the [MIT License](LICENSE) — you may use, copy, modify, merge, publish, distribute, sublicense, and sell copies of this software, as long as the above copyright notice and this permission notice are included. No warranty.
+
+*This project is the fruit of a collaboration between a human builder and an AI assistant. Both names are listed because both wrote code and reasoning that ended up here. The idea of "nen" (念) as the name, the thesis, the architecture — all came out of that shared thinking space.*
