@@ -1,37 +1,37 @@
 # 灯 nen
 
-**Client chat desktop en Rust pour LM Studio, avec tool calling et mémoire vectorielle persistante.**
+**Desktop chat client in Rust for LM Studio, with tool calling and persistent vector memory.**
 
-> *nen (念)* — kanji ancien bouddhiste signifiant la pensée immédiate, l'attention focalisée sur le moment présent. C'est le buffer de travail mental, la mémoire courte applicative. Le projet porte ce nom parce qu'il **assiste la pensée immédiate d'un LLM local** sans l'écraser.
-
----
-
-## Thèse
-
-**Un petit modèle local bien harnaché fait le boulot. Il n'y a pas besoin d'un gros modèle cloud.**
-
-Un LLM 9B (Qwen3.5, GLM-flash, Gemma, etc.) tourne sur une RTX 3060 12 Go. Correctement équipé d'outils (sandbox, fichiers, shell, mémoire vectorielle), d'une guidance minimale (system prompt ciblé, pas verbeux), et d'un pattern de décharge de contexte (extraire-sauvegarder-oublier), il accomplit 80 à 95 % des tâches d'assistance quotidiennes.
-
-Le projet démontre que la **frugalité intelligente** bat la **puissance brute** pour l'usage individuel. Zéro appel cloud, zéro télémétrie, zéro abonnement. Tout vit sur la machine de l'utilisateur.
+> *nen (念)* — an ancient Buddhist kanji meaning the immediate thought, the focused attention on the present moment. It is the mental working buffer — applicative short-term memory. The project bears this name because it **assists the immediate thought of a local LLM** without overriding it.
 
 ---
 
-## Architecture fonctionnelle
+## Thesis
+
+**A small, well-harnessed local model gets the job done. No need for a large cloud model.**
+
+A 9B LLM (Qwen3.5, GLM-flash, Gemma, etc.) runs on a consumer GPU (e.g. RTX 3060 12 GB). Properly equipped with tools (sandbox, filesystem, shell, vector memory), guided by a minimal system prompt (targeted, not verbose), and following a context-offload pattern (extract → save → forget), it accomplishes 80–95 % of everyday assistance tasks.
+
+This project demonstrates that **intelligent frugality** beats **raw power** for individual use. Zero cloud calls, zero telemetry, zero subscription. Everything lives on the user's machine.
+
+---
+
+## Functional architecture
 
 ```mermaid
 graph LR
-    U["👤 Utilisateur"] -->|prompt| APP
-    APP["nen<br/>client egui Rust"] -->|tools + messages<br/>via endpoint<br/>OpenAI-compatible| LMS["LM Studio<br/>:1234<br/>modèle local"]
-    LMS -->|stream SSE<br/>tokens + tool_calls| APP
+    U["👤 User"] -->|prompt| APP
+    APP["nen<br/>egui Rust client"] -->|tools + messages<br/>via OpenAI-compatible<br/>endpoint| LMS["LM Studio<br/>:1234<br/>local model"]
+    LMS -->|SSE stream<br/>tokens + tool_calls| APP
 
-    APP <-->|save / search| KDB["knowledge.db<br/>SQLite + embeddings 768d<br/>(mémoire longue)"]
-    APP <-->|plan / step| TDB["task_state.db<br/>SQLite<br/>(mémoire cycle — WIP)"]
+    APP <-->|save / search| KDB["knowledge.db<br/>SQLite + 768d embeddings<br/>(long-term memory)"]
+    APP <-->|plan / step| TDB["task_state.db<br/>SQLite<br/>(cycle memory — WIP)"]
     APP -->|embed| EMB["nomic-embed-text<br/>:1234"]
 
-    APP -->|sandbox| FS["📁 Workdir IA<br/>(3 modes permission :<br/>read / restricted / full)"]
+    APP -->|sandbox| FS["📁 AI workdir<br/>(3 permission modes:<br/>read / restricted / full)"]
 
-    LMS -.->|tool_call| TOOLS["10 tools<br/>──────<br/>Filesystem:<br/> list_dir<br/> read_file<br/> write_file<br/> make_dir<br/> edit_file<br/> run_command<br/>──────<br/>Mémoire:<br/> save_knowledge<br/> search_knowledge<br/> list_knowledge<br/> delete_knowledge"]
-    TOOLS -.->|exécution| FS
+    LMS -.->|tool_call| TOOLS["10 tools<br/>──────<br/>Filesystem:<br/> list_dir<br/> read_file<br/> write_file<br/> make_dir<br/> edit_file<br/> run_command<br/>──────<br/>Memory:<br/> save_knowledge<br/> search_knowledge<br/> list_knowledge<br/> delete_knowledge"]
+    TOOLS -.->|execution| FS
     TOOLS -.->|upsert / query| KDB
 
     classDef app fill:#1a2d4f,stroke:#8888ff,color:#e8e8ea
@@ -49,61 +49,61 @@ graph LR
 
 ---
 
-## Ce qui marche déjà (v10)
+## What works already (v10)
 
-### 6 tools système (sandbox workdir, 3 niveaux de permission)
+### 6 system tools (sandboxed workdir, 3 permission levels)
 
-| Tool | Usage | Cap |
+| Tool | Purpose | Cap |
 |---|---|---|
-| `list_dir(path)` | Liste un dossier (sans artefacts internes) | 200 entrées |
-| `read_file(path, start_line?, end_line?)` | Lit un fichier texte | 1 Mo max |
-| `write_file(path, content)` | Écrit un fichier, crée les parents si besoin | — |
-| `make_dir(path)` | Crée un dossier récursif | — |
-| `edit_file(path, old, new)` | Remplace une string unique | — |
-| `run_command(command)` | Exécute une commande shell | timeout 30s + taskkill |
+| `list_dir(path)` | List a directory (skipping internal artifacts) | 200 entries |
+| `read_file(path, start_line?, end_line?)` | Read a text file | 1 MB max |
+| `write_file(path, content)` | Write a file, creates parents if needed | — |
+| `make_dir(path)` | Recursively create a directory | — |
+| `edit_file(path, old, new)` | Replace a unique string | — |
+| `run_command(command)` | Execute a shell command | 30s timeout + taskkill |
 
-### 4 tools mémoire vectorielle
+### 4 vector memory tools
 
-| Tool | Usage |
+| Tool | Purpose |
 |---|---|
-| `save_knowledge(title, content, tags?)` | Embed nomic-embed-text → stocke dans knowledge.db |
-| `search_knowledge(query, limit?)` | Recherche sémantique (cosine similarity pur Rust) |
-| `list_knowledge(tag?)` | Liste les entrées, filtrage optionnel par tag |
-| `delete_knowledge(id)` | Supprime une entrée par id |
+| `save_knowledge(title, content, tags?)` | Embed (nomic-embed-text) → store in knowledge.db |
+| `search_knowledge(query, limit?)` | Semantic search (pure Rust cosine similarity) |
+| `list_knowledge(tag?)` | List entries, optional tag filter |
+| `delete_knowledge(id)` | Delete an entry by id |
 
-### Infra
+### Infrastructure
 
-- **Streaming SSE** token-by-token avec parsing robuste des `delta.tool_calls` fragmentés
-- **Sandbox path jail** via `check_access()` — canonicalize + vérifie appartenance au workdir
-- **3 modes permission** : read-only, restricted (read + write dans workdir), full (avec run_command)
-- **Thought Flow panel** — raisonnement structuré visible en temps réel
-- **System prompt personnalisé** chargé depuis `system_prompt.txt` (non versionné, privé)
-- **Injection auto du contexte workdir** quand tools activés
-- **3 tests unitaires** : filtrage workdir, schéma knowledge.db (+ round-trip embedding), schéma task_state.db
+- **SSE streaming** token-by-token with robust parsing of fragmented `delta.tool_calls`
+- **Path jail sandbox** via `check_access()` — canonicalize + verify workdir membership
+- **3 permission modes**: read-only, restricted (read + write within workdir), full (with run_command)
+- **Thought Flow panel** — structured reasoning visible in real time
+- **Custom system prompt** loaded from `system_prompt.txt` (not versioned, kept private)
+- **Auto-injection of workdir context** when tools are enabled
+- **3 unit tests**: workdir filtering, knowledge.db schema (with embedding round-trip), task_state.db schema
 
 ---
 
-## Branches de décisions en cours
+## Decision branches in progress
 
-### 🔀 Branche 1 — Cycle Agent pattern (WIP)
+### 🔀 Branch 1 — Cycle Agent pattern (WIP)
 
-**Problème** : un petit LLM 9B perd en cohérence quand son contexte s'allonge. Les chaînes de multiples tool calls finissent par glisser en format XML textuel au lieu de l'API (leçon observée).
+**Problem**: a small 9B LLM loses coherence as its context grows. Long chains of multiple tool calls eventually slip into textual XML format instead of the proper API call (observed behavior).
 
-**Solution envisagée** : découper une tâche complexe en sous-étapes atomiques, avec purge du contexte entre chaque étape. Le LLM écrit dans `task_state.db` ce qu'il vient de faire, purge, relit l'état, exécute l'étape suivante.
+**Proposed solution**: split a complex task into atomic sub-steps, purging context between each. The LLM writes into `task_state.db` what it just did, purges, re-reads the state, executes the next step.
 
-**État** : schéma `task_state.db` posé (3 tables : tasks, steps, cycle_prompts) + fonctions `open_task_db()`. **4 tools à câbler** :
+**State**: `task_state.db` schema in place (3 tables: tasks, steps, cycle_prompts) + `open_task_db()` functions. **4 tools still to wire**:
 - `plan_task(description, steps[])`
 - `step_done(step_id, findings)`
 - `step_failed(step_id, error)`
 - `task_done(task_id, summary)`
 
-### 🔀 Branche 2 — Fix encoding stdout Windows
+### 🔀 Branch 2 — Windows stdout encoding fix
 
-Les commandes PowerShell avec UTF-8 produisent du double-mojibake (`RÃ©sultat` au lieu de `Résultat`). À fixer par `[Console]::OutputEncoding = UTF8` préfixé.
+PowerShell commands emitting UTF-8 produce double-mojibake (`RÃ©sultat` instead of `Résultat`). To fix by prefixing `[Console]::OutputEncoding = UTF8`.
 
-### 🔀 Branche 3 — Agnosticisme modèle confirmé
+### 🔀 Branch 3 — Model-agnostic design confirmed
 
-L'architecture est indépendante du modèle LLM. Tout modèle compatible endpoint OpenAI (LM Studio, Ollama, vLLM, SGLang) fonctionne sans modification. Testé sur Qwen3.5-9B ; à bencher sur GLM-4.7-flash et Gemma-4.
+The architecture is independent of the underlying LLM. Any OpenAI-compatible endpoint works without modification (LM Studio, Ollama, vLLM, SGLang). Tested on Qwen3.5-9B; to be benchmarked on GLM-4.7-flash and Gemma-4.
 
 ---
 
@@ -120,52 +120,52 @@ cargo build --release
 cargo test --release
 ```
 
-Trois tests inclus :
+Three tests included:
 - `list_dir_filters_thought_flow_artifacts`
-- `knowledge_db_schema_is_valid` (round-trip embedding + cosine)
+- `knowledge_db_schema_is_valid` (embedding round-trip + cosine)
 - `task_db_schema_is_valid`
 
-## Prérequis
+## Requirements
 
 - [Rust](https://rustup.rs/) stable
-- [LM Studio](https://lmstudio.ai/) avec :
-  - Un modèle chat chargé (testé `qwen/qwen3.5-9b`, compatible tout modèle supportant le tool calling)
-  - `text-embedding-nomic-embed-text-v1.5` pour la mémoire vectorielle
+- [LM Studio](https://lmstudio.ai/) with:
+  - A chat model loaded (tested with `qwen/qwen3.5-9b`, compatible with any tool-calling model)
+  - `text-embedding-nomic-embed-text-v1.5` for vector memory
 
 ## Configuration
 
-Créer un fichier `system_prompt.txt` à la racine pour guider le modèle. Exemple minimal (respecte le principe "pas de bruit verbeux pour les petits modèles") :
+Create a `system_prompt.txt` file at the root to guide the model. Minimal example (respecting the "no verbose noise for small models" principle):
 
 ```
-Tu es un assistant qui utilise des tools sur un poste Windows.
+You are an assistant using tools on a Windows machine.
 
-Mémoire persistante :
-- Avant une tâche qui pourrait avoir déjà été traitée : search_knowledge d'abord.
-- Après une info durable découverte : save_knowledge(title, content, tags).
-- Fichier volumineux : extrais les valeurs clés, save_knowledge(extrait), travaille à partir du save.
+Persistent memory:
+- Before handling a task that may already have been addressed: search_knowledge first.
+- After discovering durable information: save_knowledge(title, content, tags).
+- Large file: extract key values, save_knowledge(excerpt), work from the save.
 
-Appelle les tools directement sans les annoncer.
+Call tools directly without announcing them.
 ```
 
 ---
 
-## Fondamental — pourquoi ce projet
+## Why this project exists
 
-Les assistants LLM grand public sont **cloud-only, opaques, abonnés, surveillés**. Les données qu'on leur confie sortent de la machine. Leur comportement peut changer du jour au lendemain selon des décisions invisibles.
+Mainstream LLM assistants are **cloud-only, opaque, subscription-based, surveilled**. The data entrusted to them leaves the machine. Their behavior can change overnight due to invisible decisions.
 
-`nen` part d'un pari inverse : **tout tourne en local**, **rien ne sort**, **on comprend chaque ligne de code**. Les tests empiriques montrent qu'un 9B local + un harnais soigné peut accomplir la grande majorité des tâches d'assistance quotidiennes — écriture, code, recherche documentaire, manipulation de fichiers, synthèse.
+`nen` starts from the opposite bet: **everything runs locally**, **nothing leaves**, **every line of code is understandable**. Empirical tests show that a local 9B + a carefully designed harness can perform the vast majority of everyday assistance tasks — writing, coding, documentation lookup, file manipulation, summarization.
 
-Ce n'est pas un concurrent de Claude/GPT/Gemini sur les tâches limite. C'est un **outil d'autonomie quotidienne** pour qui valorise :
+This is not a competitor to Claude/GPT/Gemini on edge tasks. It is an **everyday autonomy tool** for those who value:
 
-- 🔒 La vie privée absolue (rien ne quitte la machine)
-- 🛠️ La compréhensibilité (code Rust lisible, 4 500 lignes, zéro magie)
-- ♾️ L'indépendance (aucun abonnement, aucun risque de fermeture de service)
-- 🎯 La frugalité (RTX 3060 12 Go suffit, économie d'énergie par rapport au cloud)
+- 🔒 Absolute privacy (nothing leaves the machine)
+- 🛠️ Understandability (legible Rust code, ~4,700 lines, no magic)
+- ♾️ Independence (no subscription, no risk of service shutdown)
+- 🎯 Frugality (RTX 3060 12 GB is enough, energy-efficient compared to cloud)
 
-**Petit, local, compris, maîtrisé. C'est la thèse.**
+**Small, local, understood, mastered. That is the thesis.**
 
 ---
 
-## Licence
+## License
 
 TBD
