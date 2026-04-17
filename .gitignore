@@ -1,0 +1,35 @@
+# Build Rust
+/target
+Cargo.lock
+
+# Binaires compilés
+*.exe
+*.pdb
+
+# Bases de données (contiennent des données personnelles - IP publique, config perso)
+knowledge.db
+task_state.db
+*.db-journal
+
+# Configuration personnelle
+system_prompt.txt
+
+# Artefacts Thought Flow
+_thought_flow.*
+
+# Fichiers de conception (privés — notes internes)
+ROUTE_CONCEPTION.html
+PLAN_V*.html
+PLAN_V*.md
+PLAN_TOOLS.md
+etat_des_lieux_*.html
+session_log.html
+settings.json
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
