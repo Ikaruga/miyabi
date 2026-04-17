@@ -10,7 +10,7 @@
 
 **Un petit modèle local bien harnaché fait le boulot. Il n'y a pas besoin d'un gros modèle cloud.**
 
-Un LLM 9B (Qwen3.5, GLM-flash, Gemma, etc.) tourne sur une RTX 3060 4 Go. Correctement équipé d'outils (sandbox, fichiers, shell, mémoire vectorielle), d'une guidance minimale (system prompt ciblé, pas verbeux), et d'un pattern de décharge de contexte (extraire-sauvegarder-oublier), il accomplit 80 à 95 % des tâches d'assistance quotidiennes.
+Un LLM 9B (Qwen3.5, GLM-flash, Gemma, etc.) tourne sur une RTX 3060 12 Go. Correctement équipé d'outils (sandbox, fichiers, shell, mémoire vectorielle), d'une guidance minimale (system prompt ciblé, pas verbeux), et d'un pattern de décharge de contexte (extraire-sauvegarder-oublier), il accomplit 80 à 95 % des tâches d'assistance quotidiennes.
 
 Le projet démontre que la **frugalité intelligente** bat la **puissance brute** pour l'usage individuel. Zéro appel cloud, zéro télémétrie, zéro abonnement. Tout vit sur la machine de l'utilisateur.
 
@@ -160,7 +160,7 @@ Ce n'est pas un concurrent de Claude/GPT/Gemini sur les tâches limite. C'est un
 - 🔒 La vie privée absolue (rien ne quitte la machine)
 - 🛠️ La compréhensibilité (code Rust lisible, 4 500 lignes, zéro magie)
 - ♾️ L'indépendance (aucun abonnement, aucun risque de fermeture de service)
-- 🎯 La frugalité (RTX 3060 4 Go suffit, économie d'énergie par rapport au cloud)
+- 🎯 La frugalité (RTX 3060 12 Go suffit, économie d'énergie par rapport au cloud)
 
 **Petit, local, compris, maîtrisé. C'est la thèse.**
 
