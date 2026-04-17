@@ -107,6 +107,44 @@ The architecture is independent of the underlying LLM. Any OpenAI-compatible end
 
 ---
 
+## Roadmap
+
+Openly shared — if this project doesn't reach every goal, it may at least inspire others to pick up the pattern.
+
+### 🎯 Priority — Cycle Agent (unlocks long-horizon tasks)
+- [ ] `plan_task(description, steps[])` — persist task + initial steps in `task_state.db`
+- [ ] `step_done(step_id, findings)` — mark step complete, record findings, fetch next
+- [ ] `step_failed(step_id, error)` — mark step failed, record error
+- [ ] `task_done(task_id, summary)` — close task with final summary
+- [ ] `stream_cycle_agent()` — execution loop with context purge between steps
+- [ ] UI toggle "Standard mode / Cycle mode" + dedicated tab to visualize ongoing tasks/steps
+
+### 🧰 Tool refinements
+- [ ] `edit_knowledge(id, fields)` — update a memory entry without delete+re-save
+- [ ] `read_file` on a directory → clear error `"This is a directory — use list_dir instead"` (currently returns cryptic OS error 5)
+- [ ] Symmetry: also block `_thought_flow.*` inside `read_file` (currently only filtered in `list_dir` and workdir context)
+- [ ] Optional soft cap on command output length (long stdout can bloat context)
+
+### 🔧 Infrastructure
+- [ ] Fix Windows PowerShell stdout encoding (`[Console]::OutputEncoding = UTF8` prefix to eliminate double-mojibake `RÃ©sultat`)
+- [ ] Reproducible test suite (3–5 multi-tool prompts replayed at every version to detect regressions)
+- [ ] Split `main.rs` (currently ~4,700 lines) into focused modules
+- [ ] Proper logging with log levels (replace ad-hoc prints)
+
+### 📊 Benchmarks
+- [ ] Head-to-head: Qwen3.5-9B vs GLM-4.7-flash vs Gemma-4 vs Phi-4 on the same prompt set
+- [ ] Scoring grid: hallucinates / gives up / completes / quality of output
+- [ ] Publish results to help others choose a local model
+
+### 💡 Nice-to-have (open ideas)
+- [ ] Export a session as a self-contained HTML (archive + shareable)
+- [ ] Import/export knowledge.db between machines (sync own memory across devices)
+- [ ] Multi-workdir switching without restart
+- [ ] Plugin-style tool loading (user-defined tools without rebuilding)
+- [ ] Optional local speech-to-text input (Whisper) for voice interaction
+
+---
+
 ## Build
 
 ```bash
